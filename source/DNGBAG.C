@@ -164,6 +164,10 @@ void smart_render(byte i) {
     w = balloons_prototypes[(balloons[i].type - 1) / 2 + half][0];
     h = balloons_prototypes[(balloons[i].type - 1) / 2 + half][1];
 
+    // move offsets by 4 to up (unsafe: writes data to unknown memory locations)
+    offset -= balloons_prototypes[(balloons[i].type - 1) / 2][1] * 160;;
+    deoffset -= balloons_prototypes[(balloons[i].type - 1) / 2][1] * 160;;
+
     // render each line of the balloon
     for (j = 0; j < difference; j++) {
         for (c = 0; c < w / 2; c++) {
@@ -200,6 +204,8 @@ void full_render(byte i) {
   offset *= 160;
   offset += balloons[i].x * 2;
 
+  offset -= balloons_prototypes[(balloons[i].type - 1) / 2][1] * 160;
+
   // render each line of the balloon
   for (j = 0; j < h; j++) {
     for (c = 0; c < w; c++) {
@@ -213,19 +219,21 @@ void full_derender(byte i) {
   word j, c;
   byte w, h, half;
   // calculate the vertical position of the balloon
-  word offset = balloons[i].y / 1000;
+  word offset = balloons[i].render_y;
 
   // calculate the offset for choosing the prototype
   half = (balloons[i].y / 1000) % 2;
 
   // get the width and height of the balloon prototype
   w = balloons_prototypes[(balloons[i].type - 1) / 2 + half][0];
-  h = balloons_prototypes[(balloons[i].type - 1) / 2 + half][1];
+  h = balloons_prototypes[(balloons[i].type - 1) / 2 + half][1] + 1;
 
   // adjust the offset for rendering
   offset /= 2;
   offset *= 160;
   offset += balloons[i].x * 2;
+
+  offset -= (h) * 160;  
 
   // render each line of the balloon
   for (j = 0; j < h; j++) {
@@ -276,7 +284,7 @@ void spawn_balloon(void)
   balloons[i].speed = 5 + random() / 3;
 
   // render the balloon
-  full_render(i);
+  //full_render(i);
 }
 
 // function to clear screen using the DOS interrupt (for the end of the game)
@@ -385,6 +393,10 @@ int main() {
       case 61:
         debug = 2;
         break;
+      // F4 - enter debug mode 3
+      case 62:
+        debug = 3;
+        break;
       default:
         break;
     }
@@ -395,7 +407,12 @@ int main() {
     }
 
     // update spawn delay
-    spawn_delay -= delta_time;
+    if (spawn_delay >= delta_time) {
+      spawn_delay -= delta_time;
+    } else {
+      spawn_delay = 0;
+    }
+    
     if (spawn_delay <= 0) {
       spawn_balloon();
       spawn_delay = 250 + random() / 3;
@@ -420,7 +437,11 @@ int main() {
       } else if (debug == 2 && delta_time > 0) {
         // print the framerate to the screen
         print_word(100 / delta_time, 0);
+      } else if (debug == 3)
+      {
+        print_word(spawn_delay, 0);
       }
+      
 
       if (balloons[i].y > 50000) {
         // kill the balloon if it's too low

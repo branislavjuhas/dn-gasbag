@@ -8,5 +8,8 @@
 *.exe
 *.com
 
+# Backup files
+*.bak
+
 # Editor data
 .vscode/
