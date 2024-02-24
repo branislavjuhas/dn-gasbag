@@ -32,7 +32,7 @@ byte bullets = 0;
 struct balloon balloons [10];
 
 // seed for the random number generator
-byte seed = 0;
+word seed = 0;
 
 // time of the last frame
 word last_time = 0;
@@ -53,6 +53,7 @@ char far *VGA = (char far *)0xB8000000;
 word get_time(void) {
   byte seconds;
   byte centiseconds;
+  word calculated_time;
   // get the time using the BIOS interrupt
   asm {
     mov ah, 0x2C
@@ -61,7 +62,12 @@ word get_time(void) {
     mov centiseconds, dl
   }
   // return the time
-  return centiseconds + seconds * 100;
+  calculated_time = centiseconds + seconds * 100;
+  if (calculated_time < last_time) {
+    return last_time;
+  }
+
+  return calculated_time;
 }
 
 // function to make random function more random
@@ -70,17 +76,17 @@ void randomize(void) {
   asm {
     mov ah, 0x2C
     int 0x21
-    mov seed, dl
+    mov seed, dx
   }
 }
 
 // function to generate a random number
-byte random(void) {
+byte random_byte(byte max) {
   // generate a random number using the seed
-  seed = (seed * 33 + 137) & 255;
+  seed = (seed * 0x15A4E + 1) & 0xFFFF;
 
-  // return the random number
-  return seed;
+  // return the random number (considering the maximum expected)
+  return (byte)seed % max;
 }
 
 // function to read the keyboard port
@@ -227,7 +233,7 @@ void full_derender(byte i) {
 
   // get the width and height of the balloon prototype
   w = balloons_prototypes[(balloons[i].type - 1) / 2 + half][0];
-  h = balloons_prototypes[(balloons[i].type - 1) / 2 + half][1];
+  h = balloons_prototypes[(balloons[i].type - 1) / 2 + half][1] + 1;
 
   // adjust the offset for rendering
   offset /= 2;
@@ -253,25 +259,45 @@ void kill_balloon(byte i) {
   full_derender(i);
 }
 
+// function to calculate horizontal distance between two objects
+byte horizontal_distance(byte i, byte c) {
+  signed char hdst = (signed char)i - (signed char)c;
+
+  // return the absolute value of the difference in hdst
+  hdst = (hdst < 0) ? hdst * -1 : hdst;
+  return (byte)hdst;
+}
+
+// function to calculate the ideal speed for the balloon new balloon
+byte ideal_speed(byte c) {
+  // ASSUMPTION: v1 = v2 * d1 / d2
+
+  // declare a variable to store the speed
+  word speed = 0;
+  // calculate the distance of the existing balloon from the end of the screen
+  byte distance = 50 - balloons[c].render_y;
+
+  // calculate the speed of the new balloon
+  speed = balloons[c].speed * 42;
+  speed /= distance;
+
+  // return the speed
+  return (byte)speed;
+}
+
 // function to spawn a new balloon
 void spawn_balloon(void)
 {
   // define the pointer to the first empty balloon
   byte i = 0;
+  byte c = 0;
 
   // iterate through the balloons and find the first empty one
-  while (1)
+  for (i = 0; i < 10; i++)
   {
     if (balloons[i].type == 0)
     {
       break;
-    }
-
-    i++;
-
-    if (i == 10)
-    {
-      return;
     }
   }
 
@@ -280,12 +306,34 @@ void spawn_balloon(void)
 
   // set the type of the balloon to 1 (full)
   balloons[i].type = 1;
-  balloons[i].x = random() / 4;
+  balloons[i].x = random_byte(75);
   balloons[i].y = 0;
-  balloons[i].speed = 5 + random() / 3;
+  balloons[i].speed = 5 + random_byte(70);
 
-  // render the balloon
-  //full_render(i);
+  // for each balloon, check, if their horizontal distance is not less than 7
+  for (c = 0; c < 10; c++) {
+    // skip all empty balloons and self
+    if (c == i) { continue; }
+    if (balloons[c].type == 0) { continue; }
+
+    if (horizontal_distance(balloons[i].x, balloons[c].x) < 7) {
+      // if the balloons y is lower than 4000, move balloon 7 to right
+      if (balloons[c].y <= 15000) {
+        balloons[i].x += 7;
+        balloons[i].x = (balloons[i].x > 74) ? 1 : balloons[i].x;
+        
+        // restart the loop to make a new check and continue
+        c = 0;
+        continue;
+      }
+
+      // if the new balloon's speed is greather than the original balloon's, set
+      // it to the original's one
+      if (balloons[i].speed > ideal_speed(c)) {
+        balloons[i].speed = ideal_speed(c);
+      }
+    }
+  }
 }
 
 // function to clear screen using the DOS interrupt (for the end of the game)
@@ -416,7 +464,7 @@ int main() {
     
     if (spawn_delay <= 0) {
       spawn_balloon();
-      spawn_delay = 250 + random() / 3;
+      spawn_delay = 250 + random_byte(70);
     }
 
     // update balloon positions and handle debug mode
