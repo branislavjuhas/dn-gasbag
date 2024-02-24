@@ -215,6 +215,7 @@ void full_render(byte i) {
   }
 }
 
+// function to fully derender balloon
 void full_derender(byte i) {
   word j, c;
   byte w, h, half;
@@ -222,18 +223,18 @@ void full_derender(byte i) {
   word offset = balloons[i].render_y;
 
   // calculate the offset for choosing the prototype
-  half = (balloons[i].y / 1000) % 2;
+  half = (balloons[i].render_y) % 2;
 
   // get the width and height of the balloon prototype
   w = balloons_prototypes[(balloons[i].type - 1) / 2 + half][0];
-  h = balloons_prototypes[(balloons[i].type - 1) / 2 + half][1] + 1;
+  h = balloons_prototypes[(balloons[i].type - 1) / 2 + half][1];
 
   // adjust the offset for rendering
   offset /= 2;
   offset *= 160;
   offset += balloons[i].x * 2;
 
-  offset -= (h) * 160;  
+  offset -= (h - 1) * 160;
 
   // render each line of the balloon
   for (j = 0; j < h; j++) {
@@ -433,7 +434,8 @@ int main() {
         VGA[i * 160] = 0x30 + i;
         VGA[i * 160 + 4] = 0x30 + balloons[i].type;
         VGA[i * 160 + 8] = 0x30 + balloons[i].x;
-        print_word(balloons[i].y, i * 160 + 12);
+        VGA[i * 160 + 12] = 0x30 + balloons[i].render_y;
+        print_word(balloons[i].y, i * 160 + 16);
       } else if (debug == 2 && delta_time > 0) {
         // print the framerate to the screen
         print_word(100 / delta_time, 0);
