@@ -23,6 +23,7 @@ struct bullet {
 };
 
 byte current_buffer = 0;
+word buffer_offset[2] = {0, 4096};
 
 // x position of the player
 word player = 0;
@@ -160,8 +161,13 @@ void hide_cursor(void) {
   }
 }
 
-void screen_stream(word offset, word data) {
-  VGA[offset] = data;
+// function to change visible screen buffer
+void set_visible_buffer(byte buffer) {
+  asm {
+    mov ah, 0x05
+    mov al, buffer
+    int 0x10
+  }
 }
 
 // function to render the balloon with the smart rendering
@@ -171,7 +177,7 @@ void smart_render(byte i) {
     // calculate the vertical position of the balloon
     word offset = (balloons[i].y / 1000);
     // calculate the difference in vertical position
-    byte difference = offset - balloons[i].cv;
+    byte difference = offset - balloons[i].cv[current_buffer];
 
     // if the vertical position hasn't changed, no need to render
     if (difference == 0) {
@@ -179,12 +185,12 @@ void smart_render(byte i) {
     }
 
     // calculate the offset for rendering
-    deoffset = balloons[i].cv / 2;
+    deoffset = balloons[i].cv[current_buffer] / 2;
     deoffset *= 160;
     deoffset += balloons[i].x * 2;
 
     // update the render position of the balloon
-    balloons[i].cv = offset;
+    balloons[i].cv[current_buffer] = offset;
 
     // calculate the number of lines to render
     difference = difference / 2 + 1;
@@ -206,20 +212,21 @@ void smart_render(byte i) {
     offset -= balloons_prototypes[(balloons[i].type - 1) / 2][1] * 160;;
     deoffset -= balloons_prototypes[(balloons[i].type - 1) / 2][1] * 160;;
 
-    // render each line of the balloon
     for (j = 0; j < difference; j++) {
         for (c = 0; c < w / 2; c++) {
-            VGA[deoffset + c * 2] = ' '; // clear the character
-            VGA[deoffset + c * 2 + 1] = 0x1F; // set the color attribute
+            VGA[buffer_offset[current_buffer] + deoffset + c * 2] = ' '; // clear the character
+            VGA[buffer_offset[current_buffer] + deoffset + c * 2 + 1] = 0x1F; // set the color attribute
         }
         deoffset += 160; // move to the next line
     }
 
+    // render each line of the balloon
     for (j = 0; j < h; j++) {
-        for (c = 0; c < w; c++) {
-            VGA[offset + c] = balloons_prototypes[(balloons[i].type - 1) / 2 + half][j * 12 + c + 2];
-        }
-        offset += 160; // move to the next line
+      if (offset > 4000) { offset += 160; continue; }
+      for (c = 0; c < w; c++) {
+          VGA[buffer_offset[current_buffer] + offset + c] = balloons_prototypes[(balloons[i].type - 1) / 2 + half][j * 12 + c + 2];
+      }
+      offset += 160; // move to the next line
     }
 }
 
@@ -247,7 +254,7 @@ void full_render(byte i) {
   // render each line of the balloon
   for (j = 0; j < h; j++) {
     for (c = 0; c < w; c++) {
-      VGA[offset + c] = balloons_prototypes[(balloons[i].type - 1) / 2 + half][j * 12 + c + 2];
+      VGA[buffer_offset[current_buffer] + offset + c] = balloons_prototypes[(balloons[i].type - 1) / 2 + half][j * 12 + c + 2];
     }
     offset += 160; // move to the next line
   }
@@ -256,31 +263,35 @@ void full_render(byte i) {
 // function to fully derender balloon
 void full_derender(byte i) {
   word j, c;
-  byte w, h, half;
-  // calculate the vertical position of the balloon
-  word offset = balloons[i].cv;
+  byte w, h, half, b;
 
-  // calculate the offset for choosing the prototype
-  half = (balloons[i].cv) % 2;
+  for (b = 0; b < 2; b++) {
 
-  // get the width and height of the balloon prototype
-  w = balloons_prototypes[(balloons[i].type - 1) / 2 + half][0];
-  h = balloons_prototypes[(balloons[i].type - 1) / 2 + half][1] + 1;
+    // calculate the vertical position of the balloon
+    word offset = balloons[i].cv[b];
 
-  // adjust the offset for rendering
-  offset /= 2;
-  offset *= 160;
-  offset += balloons[i].x * 2;
+    // calculate the offset for choosing the prototype
+    half = (balloons[i].cv[b]) % 2;
 
-  offset -= (h - 1) * 160;
+    // get the width and height of the balloon prototype
+    w = balloons_prototypes[(balloons[i].type - 1) / 2 + half][0];
+    h = balloons_prototypes[(balloons[i].type - 1) / 2 + half][1] + 1;
 
-  // render each line of the balloon
-  for (j = 0; j < h; j++) {
-    for (c = 0; c < w; c+= 2) {
-      VGA[offset + c] = ' ';
-      VGA[offset + c + 1] = 0x1F;
+    // adjust the offset for rendering
+    offset /= 2;
+    offset *= 160;
+    offset += balloons[i].x * 2;
+
+    offset -= (h - 1) * 160;
+
+    // render each line of the balloon
+    for (j = 0; j < h; j++) {
+      for (c = 0; c < w; c+= 2) {
+        VGA[buffer_offset[b] + offset + c] = ' ';
+        VGA[buffer_offset[b] + offset + c + 1] = 0x1F;
+      }
+      offset += 160; // move to the next line
     }
-    offset += 160; // move to the next line
   }
 }
 
@@ -307,7 +318,7 @@ byte ideal_speed(byte c) {
   // declare a variable to store the speed
   word speed = 0;
   // calculate the distance of the existing balloon from the end of the screen
-  byte distance = 50 - balloons[c].cv;
+  byte distance = 50 - balloons[c].cv[current_buffer];
 
   // calculate the speed of the new balloon
   speed = balloons[c].speed * 42;
@@ -407,7 +418,7 @@ void print_word(word w, word offset) {
   for (i = 0; i < 5; i++)
   {
     // print the digit to the screen
-    VGA[offset + i * 2] = digits[4 - i] + 0x30;
+    VGA[buffer_offset[current_buffer] + offset + i * 2] = digits[4 - i] + 0x30;
   }
 
 }
@@ -432,20 +443,17 @@ void print_word_hex(word w, word offset) {
   for (i = 0; i < 4; i++)
   {
     // print the digit to the screen
-    VGA[offset + i * 2] = hexa[digits[4 - i]];
+    VGA[buffer_offset[current_buffer] + offset + i * 2] = hexa[digits[4 - i]];
   }
 
 }
 
-// function to handle the main game process
-int main() {
-  byte key, i;
+// function to handle the logic of the main gameplay
+void level(byte number) {
+  byte i;
   word delta_time, addition;
   byte debug = 0;
-
-  // clear the screen and hide the cursor
-  clear_screen();
-  hide_cursor();
+  byte key = 0;
 
   // set the last time to the current time
   prepare_time();
@@ -464,6 +472,9 @@ int main() {
       case 59:
         debug = 0;
         clear_screen();
+        set_visible_buffer(current_buffer ^ 1);
+        clear_screen();
+        set_visible_buffer(current_buffer);
         break;
       // F2 - enter debug mode 1
       case 60:
@@ -510,10 +521,10 @@ int main() {
       // handle debug mode
       if (debug == 1) {
         // print the balloon data to the screen
-        VGA[i * 160] = 0x30 + i;
-        VGA[i * 160 + 4] = 0x30 + balloons[i].type;
-        VGA[i * 160 + 8] = 0x30 + balloons[i].x;
-        VGA[i * 160 + 12] = 0x30 + balloons[i].cv;
+        VGA[buffer_offset[current_buffer] + i * 160] = 0x30 + i;
+        VGA[buffer_offset[current_buffer] + i * 160 + 4] = 0x30 + balloons[i].type;
+        VGA[buffer_offset[current_buffer] + i * 160 + 8] = 0x30 + balloons[i].x;
+        VGA[buffer_offset[current_buffer] + i * 160 + 12] = 0x30 + balloons[i].cv[current_buffer];
         print_word(balloons[i].y, i * 160 + 16);
       } else if (debug == 2 && delta_time > 0) {
         // print the framerate to the screen
@@ -532,7 +543,29 @@ int main() {
 
       smart_render(i);
     }
+  
+    // change visible screen buffer
+    set_visible_buffer(current_buffer);
+
+    // create an alternation for the current buffer
+    current_buffer = current_buffer ^ 1;
   }
+}
+
+// function to handle the main game process
+int main() {
+
+  // clear the screen and hide the cursor
+  clear_screen();
+  set_visible_buffer(current_buffer ^ 1);
+  clear_screen();
+  set_visible_buffer(current_buffer);
+  hide_cursor();
+
+  // play the game
+  level(0);
+
+  set_visible_buffer(0);
 
   // clear the screen in DOS mode before exiting
   clear_screen_dos();
