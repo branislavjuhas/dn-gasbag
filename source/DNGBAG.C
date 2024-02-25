@@ -11,7 +11,7 @@ typedef unsigned int word;
 struct balloon {
   byte x;
   word y;
-  byte render_y;
+  byte cv[2];
   byte type;
   byte speed;
 };
@@ -21,6 +21,8 @@ struct bullet {
   word x;
   word y;
 };
+
+byte current_buffer = 0;
 
 // x position of the player
 word player = 0;
@@ -49,11 +51,10 @@ char *balloons_prototypes[] = {
 // define the video memory
 char far *VGA = (char far *)0xB8000000;
 
-// function to get the time (seconds and centiseconds)
-word get_time(void) {
+void prepare_time(void) {
   byte seconds;
   byte centiseconds;
-  word calculated_time;
+
   // get the time using the BIOS interrupt
   asm {
     mov ah, 0x2C
@@ -61,13 +62,44 @@ word get_time(void) {
     mov seconds, dh
     mov centiseconds, dl
   }
-  // return the time
+
+  // set the last time to the current time
+  last_time = centiseconds + seconds * 100;
+}
+
+// function to get the time (seconds and centiseconds)
+word get_delta_time(void) {
+  byte seconds;
+  byte centiseconds;
+  word calculated_time;
+  word delta;
+  // get the time using the BIOS interrupt
+  asm {
+    mov ah, 0x2C
+    int 0x21
+    mov seconds, dh
+    mov centiseconds, dl
+  }
+  // if the time has wrapped around, add calculate the remaining time from the
+  // last time to the end of the minute and add it to the current time
   calculated_time = centiseconds + seconds * 100;
   if (calculated_time < last_time) {
-    return last_time;
+    // set delta time to the remaining time to the minute and calculated time
+    delta = calculated_time + 6000 - last_time;
+
+    // set the last time and return delta time
+    last_time = calculated_time;
+    return delta;
   }
 
-  return calculated_time;
+  // calculate the time since the last frame
+  delta = calculated_time - last_time;
+
+  // set the last time to the current time
+  last_time = calculated_time;
+
+  // return the time
+  return delta;
 }
 
 // function to make random function more random
@@ -139,7 +171,7 @@ void smart_render(byte i) {
     // calculate the vertical position of the balloon
     word offset = (balloons[i].y / 1000);
     // calculate the difference in vertical position
-    byte difference = offset - balloons[i].render_y;
+    byte difference = offset - balloons[i].cv;
 
     // if the vertical position hasn't changed, no need to render
     if (difference == 0) {
@@ -147,12 +179,12 @@ void smart_render(byte i) {
     }
 
     // calculate the offset for rendering
-    deoffset = balloons[i].render_y / 2;
+    deoffset = balloons[i].cv / 2;
     deoffset *= 160;
     deoffset += balloons[i].x * 2;
 
     // update the render position of the balloon
-    balloons[i].render_y = offset;
+    balloons[i].cv = offset;
 
     // calculate the number of lines to render
     difference = difference / 2 + 1;
@@ -226,10 +258,10 @@ void full_derender(byte i) {
   word j, c;
   byte w, h, half;
   // calculate the vertical position of the balloon
-  word offset = balloons[i].render_y;
+  word offset = balloons[i].cv;
 
   // calculate the offset for choosing the prototype
-  half = (balloons[i].render_y) % 2;
+  half = (balloons[i].cv) % 2;
 
   // get the width and height of the balloon prototype
   w = balloons_prototypes[(balloons[i].type - 1) / 2 + half][0];
@@ -275,7 +307,7 @@ byte ideal_speed(byte c) {
   // declare a variable to store the speed
   word speed = 0;
   // calculate the distance of the existing balloon from the end of the screen
-  byte distance = 50 - balloons[c].render_y;
+  byte distance = 50 - balloons[c].cv;
 
   // calculate the speed of the new balloon
   speed = balloons[c].speed * 42;
@@ -416,13 +448,12 @@ int main() {
   hide_cursor();
 
   // set the last time to the current time
-  last_time = get_time();
+  prepare_time();
 
   // main loop (while the user doesn't press the escape key (1)
   while (key != 1) {
     // get the time since the last frame
-    delta_time = get_time() - last_time;
-    last_time = get_time();
+    delta_time = get_delta_time();
 
     // get the key from the keyboard
     key = read_keyboard();
@@ -482,7 +513,7 @@ int main() {
         VGA[i * 160] = 0x30 + i;
         VGA[i * 160 + 4] = 0x30 + balloons[i].type;
         VGA[i * 160 + 8] = 0x30 + balloons[i].x;
-        VGA[i * 160 + 12] = 0x30 + balloons[i].render_y;
+        VGA[i * 160 + 12] = 0x30 + balloons[i].cv;
         print_word(balloons[i].y, i * 160 + 16);
       } else if (debug == 2 && delta_time > 0) {
         // print the framerate to the screen
