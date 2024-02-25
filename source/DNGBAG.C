@@ -34,8 +34,11 @@ byte bullets = 0;
 // array of balloons
 struct balloon balloons [10];
 
+byte grass[80];
+
 // seed for the random number generator
 word seed = 0;
+word os = 0;
 
 // time of the last frame
 word last_time = 0;
@@ -115,11 +118,15 @@ void randomize(void) {
 
 // function to generate a random number
 byte random_byte(byte max) {
+  word random;
   // generate a random number using the seed
-  seed = (seed * 0x15A4E + 1) & 0xFFFF;
+  seed = (seed * 7691 + 7) & 0xFFFF;
 
-  // return the random number (considering the maximum expected)
-  return (byte)seed % max;
+  // calculate the random number using the seed and the maximum value
+  random = seed % ((word)max * 10);
+
+  // return the random number
+  return (byte)(random / 10);
 }
 
 // function to read the keyboard port
@@ -213,6 +220,7 @@ void smart_render(byte i) {
     deoffset -= balloons_prototypes[(balloons[i].type - 1) / 2][1] * 160;;
 
     for (j = 0; j < difference; j++) {
+        if (deoffset > 4000) { deoffset += 160; continue; }
         for (c = 0; c < w / 2; c++) {
             VGA[buffer_offset[current_buffer] + deoffset + c * 2] = ' '; // clear the character
             VGA[buffer_offset[current_buffer] + deoffset + c * 2 + 1] = 0x1F; // set the color attribute
@@ -275,14 +283,14 @@ void full_derender(byte i) {
 
     // get the width and height of the balloon prototype
     w = balloons_prototypes[(balloons[i].type - 1) / 2 + half][0];
-    h = balloons_prototypes[(balloons[i].type - 1) / 2 + half][1] + 1;
+    h = balloons_prototypes[(balloons[i].type - 1) / 2 + half][1];
 
     // adjust the offset for rendering
     offset /= 2;
     offset *= 160;
     offset += balloons[i].x * 2;
 
-    offset -= (h - 1) * 160;
+    offset -= (h) * 160;
 
     // render each line of the balloon
     for (j = 0; j < h; j++) {
@@ -448,6 +456,32 @@ void print_word_hex(word w, word offset) {
 
 }
 
+// function to generate the grass texture
+void generate_grass(void) {
+  byte i;
+
+  // randomize the random number generator
+  randomize();
+
+  // generate the grass texture
+  for (i = 0; i < 80; i++) {
+    grass[i] = 176 + random_byte(3);
+  }
+}
+
+// function to render the level components
+void render_level(void) {
+  byte i;
+
+  // render the grass texture to the both buffers
+  for (i = 0; i < 80; i++) {
+    VGA[buffer_offset[0] + 3680 + i * 2] = grass[i];
+    VGA[buffer_offset[0] + 3681 + i * 2] = 0x2A;
+    VGA[buffer_offset[1] + 3680 + i * 2] = grass[i];
+    VGA[buffer_offset[1] + 3681 + i * 2] = 0x2A;
+  }
+}
+
 // function to handle the logic of the main gameplay
 void level(byte number) {
   byte i;
@@ -457,6 +491,11 @@ void level(byte number) {
 
   // set the last time to the current time
   prepare_time();
+
+  generate_grass();
+  render_level();
+
+  randomize();
 
   // main loop (while the user doesn't press the escape key (1)
   while (key != 1) {
@@ -535,7 +574,7 @@ void level(byte number) {
       }
       
 
-      if (balloons[i].y > 50000) {
+      if (balloons[i].y >= 47000) {
         // kill the balloon if it's too low
         kill_balloon(i);
         continue;
