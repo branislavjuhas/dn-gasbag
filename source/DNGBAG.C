@@ -308,6 +308,10 @@ void kill_balloon(byte i) {
   // set the type of the balloon to 0 (empty) and derender it
   balloons[i].type = 0;
   full_derender(i);
+
+  // reset the calculated vertical position of the balloon to avoid derendering
+  balloons[i].cv[0] = 0;
+  balloons[i].cv[1] = 0;
 }
 
 // function to calculate horizontal distance between two objects
@@ -479,6 +483,8 @@ void render_level(void) {
     VGA[buffer_offset[0] + 3681 + i * 2] = 0x2A;
     VGA[buffer_offset[1] + 3680 + i * 2] = grass[i];
     VGA[buffer_offset[1] + 3681 + i * 2] = 0x2A;
+    VGA[buffer_offset[0] + 3841 + i * 2] = 0x2F;
+    VGA[buffer_offset[1] + 3841 + i * 2] = 0x2F;
   }
 }
 
