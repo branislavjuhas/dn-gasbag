@@ -27,6 +27,7 @@ word buffer_offset[2] = {0, 4096};
 
 // x position of the player
 word player = 0;
+byte cplayer[2] = {0, 0};
 
 // number of bullets
 byte bullets = 0;
@@ -589,6 +590,28 @@ void level(byte number) {
       smart_render(i);
     }
   
+    if (key == 75) {
+      if (player < delta_time * 60) {
+        player = 0;
+      } else {
+        player -= delta_time * 60;
+      }
+    } else if (key == 77 && player <= 40000) {
+      if (player + delta_time * 60 > 40000) {
+        player = 40000;
+      } else {
+        player += delta_time * 60;
+      }
+    }
+
+    print_word(player, 0);
+    
+    // to the third line of the screen from the bottom, write i character to the
+    // position of the player and clear the previous position
+    VGA[buffer_offset[current_buffer] + 3520 + cplayer[current_buffer] * 2] = ' ';
+    cplayer[current_buffer] = player / 500;
+    VGA[buffer_offset[current_buffer] + 3520 + cplayer[current_buffer] * 2] = 'i';
+
     // change visible screen buffer
     set_visible_buffer(current_buffer);
 
