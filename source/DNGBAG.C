@@ -1,7 +1,7 @@
-/*  ///    |    DN GASBAG C PROTOTYPE 2024.0
-   / ///   |    (C) 2024, BRANISLAV JUHAS
-  / / /    |    PART OF DN SOFTWARE HERITAGE
-*/
+/*    ///    |    DN GASBAG C PROTOTYPE 2024.0
+     / ///   |    (C) 2024, BRANISLAV JUHAS
+    / / /    |    PART OF DN SOFTWARE HERITAGE
+  */
 
 // define the types for better prototyping of x86 assembly code
 typedef unsigned char byte;
